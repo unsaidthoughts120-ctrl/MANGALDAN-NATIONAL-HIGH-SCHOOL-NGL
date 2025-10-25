@@ -1,54 +1,47 @@
-import fetch from 'node-fetch';
-
-/**
- * Vercel serverless function to forward anonymous messages to Telegram.
- * Endpoint: /api/send
- */
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const { message, topic } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: "Message is required" });
+  }
+
+  const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+  const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+  if (!BOT_TOKEN || !CHAT_ID) {
+    return res.status(500).json({ error: "Server not configured properly." });
+  }
+
+  const text = `
+💌 *New Anonymous Message!*
+
+${topic ? `🧩 *Topic:* ${topic}\n` : ""}
+📝 *Message:*
+${message}
+
+⏰ ${new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })}
+`;
+
   try {
-    const { message, topic } = req.body || {};
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-
-    if (!botToken || !chatId) {
-      return res.status(500).json({ error: 'Missing Telegram credentials' });
-    }
-
-    const escapeMarkdown = s => s.replace(/([_*[`>~])/g, '\\$1');
-    const textParts = [];
-    if (topic) textParts.push(`*Topic:* ${escapeMarkdown(topic)}`);
-    textParts.push(`*Anonymous message:*`);
-    textParts.push(escapeMarkdown(message.trim().slice(0, 2000)));
-    textParts.push(`\n_Sent on ${new Date().toISOString()}_`);
-    const text = textParts.join('\n\n');
-
-    const r = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const tg = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: chatId,
+        chat_id: CHAT_ID,
         text,
-        parse_mode: 'Markdown'
+        parse_mode: "Markdown"
       })
     });
 
-    const data = await r.json();
-    if (!r.ok || !data.ok) {
-      console.error('Telegram API error', data);
-      return res.status(502).json({ error: 'Failed to send to Telegram' });
-    }
+    const data = await tg.json();
+    if (!tg.ok) throw new Error(data.description);
 
-    res.json({ ok: true });
+    return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Telegram error:", e);
+    return res.status(500).json({ error: "Failed to send Telegram message." });
   }
 }
